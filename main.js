@@ -1,7 +1,7 @@
 function main(){
 	var lookback=7;
 	var oneDay=24*60*60*1000;
-	var data;
+	var data ;
 	var chart_options;
 	var daily_data,moving_data;
 	var reportInfo={
@@ -11,7 +11,7 @@ function main(){
 	};
 
 	$(document).ready(function (){
-		console.log("ready");
+		$(".period.active").click();
 	});
 
 	$(document).ajaxComplete(function (event,xhr,settings){
@@ -25,18 +25,16 @@ function main(){
 				$.get("http://www.myfitnesspal.com/reports/results/"+reportInfo.category+"/"+reportInfo.id+"/365.json?report_name="+reportInfo.name+"&overhaul",function (result){
 					parseData(result.data,true,true);
 					createChartBasics(true,true);
-					if(reportInfo.category=='progress'){
+					if(reportInfo.category=='progress')
 						showChart();
-					}else{
+					else
 						hideChart();
-					}
 				});
 				return;
 			}
-			reportInfo=new_reportInfo;
-			reportInfo.period=MFP.Reports.reportPeriod;
 			if(reportInfo.category=='progress'){
-				showChart();
+				if(reportInfoChanged(new_reportInfo))
+					showChart();
 			}else{
 				hideChart();
 			}
@@ -54,7 +52,7 @@ function main(){
 			result.report={
 				'category':tokenized[0],
 				'name':tokenized[5],
-				'period':tokenized[2],
+				'period':parseInt(tokenized[2]),
 				'id':1,
 			};
 			if(result.report.name=='Neck')
@@ -65,6 +63,15 @@ function main(){
 				result.report.id=82719723;
 		}
 		return result;
+	}
+
+	function reportInfoChanged(new_reportInfo) {
+		if(reportInfo.category == new_reportInfo.category &&
+		reportInfo.name == new_reportInfo.name &&
+		reportInfo.period == new_reportInfo.period)
+			return false;
+		reportInfo = new_reportInfo;
+		return true;
 	}
 
 	function parseData(raw_data){
