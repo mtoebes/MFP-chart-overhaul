@@ -4,13 +4,23 @@ function main(){
 	var data ;
 	var chart_options;
 	var daily_data,moving_data;
+	var date_range = [];
 	var reportInfo={
 		'reportCatergory':"progress",
 		'reportName':"weight",
 		'reportPeriod':7
 	};
 
+	var measurements = {
+		'dateUTC' : [],
+		'weight' : [],
+		'neck' : [],
+		'waist' : [],
+		'hips' : [],
+	}
+
 	$(document).ready(function (){
+		console.log("ready");
 		$(".period.active").click();
 	});
 
@@ -25,21 +35,30 @@ function main(){
 				$.get("http://www.myfitnesspal.com/reports/results/"+reportInfo.category+"/"+reportInfo.id+"/365.json?report_name="+reportInfo.name+"&overhaul",function (result){
 					parseData(result.data,true,true);
 					createChartBasics(true,true);
-					if(reportInfo.category=='progress')
-						showChart();
-					else
-						hideChart();
+					updateChart(new_reportInfo, true);
 				});
 				return;
 			}
-			if(reportInfo.category=='progress'){
-				if(reportInfoChanged(new_reportInfo))
+			updateChart(new_reportInfo, false);
+		}
+	});
+
+	function updateChart(new_reportInfo, forceRefresh) {
+		if(reportInfo.category=='progress'){
+			if(reportInfoChanged(new_reportInfo) || forceRefresh)
 					showChart();
 			}else{
 				hideChart();
 			}
-		}
+	}
+/*
+	function makeResultRequest(category, id, name, lookback) {
+				$.get("http://www.myfitnesspal.com/reports/results/"+reportInfo.category+"/"+reportInfo.id+"/365.json?report_name="+reportInfo.name+"&overhaul",function (result){
+					parseData(result.data,true,true);
+					createChartBasics(true,true);
+					updateChart(new_reportInfo, false);
 	});
+	}*/
 
 	function parseUrl(url){
 		var result={
@@ -95,17 +114,19 @@ function main(){
 			}
 		}
 		data.reverse();
-		var cur_date=getTodayDate();
-		if(data.length>0&&data[data.length-1].dateUTC<cur_date){
-			data.push({'date_string':"today",'dateUTC':cur_date,'total':data[data.length-1].total});
+		var today = getDateRange()[1];
+		if(data.length>0&&data[data.length-1].dateUTC<today){
+			data.push({'date_string':"today",'dateUTC':today,'total':data[data.length-1].total});
 		}
 		daily_data=daily_value();
 		moving_data=moving_average();
 	}
 
-	function getTodayDate(){
+	function getDateRange() {
 		var curTime=new Date();
-		return Date.UTC(curTime.getFullYear(),curTime.getMonth(),curTime.getDate());
+		var today = Date.UTC(curTime.getFullYear(),curTime.getMonth(),curTime.getDate());
+		var lookback_day = today - reportInfo.period*oneDay;
+		return [lookback_day, today];
 	}
 
 	function parseDateString(date_string,year){
@@ -114,7 +135,7 @@ function main(){
 		var month=split_string[0];
 		return Date.UTC(year,month-1,day);
 	}
-
+``
 	function DateDif(date1,date2){
 		var diffDays=(date2-date1)/oneDay;
 		return diffDays;
@@ -169,11 +190,12 @@ function main(){
 	}
 
 	function getLimits(){
+		var date_range = getDateRange();
 		if(data.length==0)
 			return {'x_min':0,'x_max':2,'y_min':0,'y_max':1};
 		var limits={'x_min':Number.MAX_VALUE,'x_max':Number.MIN_VALUE,'y_min':Number.MAX_VALUE,'y_max':Number.MIN_VALUE};
-		limits.x_max=getTodayDate();
-		limits.x_min=limits.x_max-reportInfo.period*oneDay;
+		limits.x_max=date_range[1];
+		limits.x_min=date_range[0];
 		for(i=data.length-1;i>=0;i--){
 			if(data[i].dateUTC<limits.x_min)
 				return limits;
@@ -194,12 +216,12 @@ function main(){
 		chart_options.series[0].marker.radius=2;
 		var index=0;
 		chart_options.series[1]=jQuery.extend(true,{},chart_options.series[0]);
-		chart_options.series[index].data=daily_data;
+		//chart_options.series[index].data=daily_data;
 		chart_options.series[index].name="daily";
 		chart_options.series[index].type="line";
 		chart_options.series[index].marker.enabled=true;
 		index++;
-		chart_options.series[index].data=moving_data;
+		//chart_options.series[index].data=moving_data;
 		chart_options.series[index].name="average";
 		chart_options.series[index].type="spline";
 		index++;
@@ -227,6 +249,8 @@ function main(){
 	}
 
 	function updateChartOptions(){
+		chart_options.series[0].data=daily_data;
+		chart_options.series[1].data=moving_data;
 		var limits=getLimits();
 		chart_options.xAxis[0].min=limits.x_min;
 		chart_options.xAxis[0].max=limits.x_max;
