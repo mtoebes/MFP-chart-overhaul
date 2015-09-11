@@ -9,13 +9,13 @@ function main(){
 		'name':"weight",
 		'period':7
 	};
-
 	var measurements = {
 		'Weight' : null,
 		'Neck' : null,
 		'Waist' : null,
 		'Hips' : null,
 	}
+	var isPageLoad = true;
 
 	$(document).ready(function (){
 		createChartBasics(true,true);
@@ -30,8 +30,8 @@ function main(){
 				return;
 			var new_reportInfo=urlInfo.report;
 			var measurement = getMeasurementByName(new_reportInfo.name);
-			if(new_reportInfo.category=='progress' && (new_reportInfo.name!=reportInfo.name||measurement==null)){
-				makeMeasurementRequest(new_reportInfo,365);
+			if(new_reportInfo.category=='progress' && measurement==null){
+				makeMeasurementRequest(new_reportInfo,7, true);
 			} else {
 				updateChart(new_reportInfo, false);
 			}
@@ -49,10 +49,16 @@ function main(){
 		}
 	}
 
-	function makeMeasurementRequest(new_reportInfo, period_length) {
+	function makeMeasurementRequest(new_reportInfo, period_length, force_update) {
 		$.get("http://www.myfitnesspal.com/reports/results/"+new_reportInfo.category+"/"+new_reportInfo.id+"/"+period_length+".json?report_name="+new_reportInfo.name+"&overhaul",function (raw_results){
 			parseData(raw_results);
-			updateChart(new_reportInfo, true);
+			updateChart(new_reportInfo, force_update);
+			if(raw_results.data.length != 0 && raw_results.data[0].total != 0) {
+				makeMeasurementRequest(new_reportInfo, 2*period_length, false);
+			} else {
+				console.log("lookback period is " + period_length);
+				//make scale visible
+			}
 		});
 	}
 
@@ -225,40 +231,63 @@ function main(){
 
 	function createChartBasics(){
 		chart_options=MFP.Reports.chart.options;
-		chart_options.series[0].dataLabels.enabled=false;
-		chart_options.series[0].marker.radius=2;
-		var index=0;
-		chart_options.series[1]=jQuery.extend(true,{},chart_options.series[0]);
-		//chart_options.series[index].data=daily_data;
-		chart_options.series[index].name="daily";
-		chart_options.series[index].type="line";
-		chart_options.series[index].marker.enabled=true;
-		index++;
-		//chart_options.series[index].data=moving_data;
-		chart_options.series[index].name="average";
-		chart_options.series[index].type="spline";
-		index++;
-		chart_options.plotOptions.line.lineWidth=0;
-		var test_chart_options=chart_options;
-		chart_options.chart.renderTo="highchart2";
-		chart_options.tooltip={
+		chart_options = {
+		colors : ["#f7941e"],
+		series : [{
+			data : [],
+			name : "Daily",
+			type : "line",
+			dataLabels : {enabled : false},
+			marker : {
+				enabled : true,
+				symbol : "circle",
+				radius : 2
+				}
+		}, {
+			data : [],
+			name : "Average",
+			type : "spline",
+			dataLabels : {enabled : false},
+			marker : {
+				enabled : false,
+				symbol : "circle",
+				radius : 2
+			}
+		}],
+		plotOptions : {
+			line : {lineWidth : 0}
+		},
+		chart : {renderTo : "highchart2"},
+		tooltip : {
 			shared:true,
 			headerFormat:"<spanstyle=\"font-size:10px\">{point.key}</span><br/>",
 			pointFormat:"<spanstyle=\"color:{series.color}\">{series.name}</span> : <b>{point.y}</b><br/>",
-		};
-		chart_options.yAxis[0].minRange=1;
-		chart_options.yAxis[0].minTickInterval=1;
-		chart_options.yAxis[0].allowDecimals=false;
-		chart_options.xAxis[0]={
+		},
+		yAxis: [{
+			title : {text : "TEXT", style : {fontSize : "16px"}},
+			minRange : 1,
+			minTickInterval : 1,
+			allowDecimals : false
+		}],
+		xAxis : [{
 			type:'datetime',
-			lineColor:chart_options.xAxis[0].lineColor,
-			tickColor:chart_options.xAxis[0].tickColor,
+			lineColor:"#C0C0C0",
+			tickColor:"#C0C0C0",
 			tickmarkPlacement:"on",
 			dateTimeLabelFormats:{day:'%b %d',week:'%b %d',month:'%b %d',year:'%b %d'},
-			labels:chart_options.xAxis[0].labels
+			labels: {
+				align : "right",
+				rotation : -90,
+				step : 1,
+				x : 4,
+				y : 10,
+				style : {
+					fontFamily: "Verdana, sans-serif",
+					fontSize : "13px"
+				}
+			}
+		}]
 		};
-		chart_options.xAxis[0].labels.step=1;
-		chart_options.xAxis[0].labels.formatter=null;
 	}
 
 	function updateChartOptions(measurement){
@@ -285,11 +314,69 @@ function main(){
 		$('#highchart').show();
 		$('#highchart2').hide();
 	}
+
+	function createSlider(minUTC, maxUTC) {
+		var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
+          $("#dateRulersExample").dateRangeSlider({
+            bounds: {min: new Date(maxUTC), max: new Date(maxUTC)},
+            defaultValues: {min: new Date(minUTC), max: new Date(maxUTC)},
+            scales: [{
+              first: function(value){ return value; },
+              end: function(value) {return value; },
+              next: function(value){
+                var next = new Date(value);
+                return new Date(next.setMonth(value.getMonth() + 1));
+              },
+              label: function(value){
+                return months[value.getMonth()];
+              },
+              format: function(tickContainer, tickStart, tickEnd){
+                tickContainer.addClass("myCustomClass");
+              }
+            }]
+          });
+	}
+
+	function showSlider() {
+        createSlider(1421625600000, 1441756800000);
+       $("#dateRulersExample").show();
+	}
+
+	function hideSlider() {
+		 $("#dateRulersExample").hide();
+	}
 }
+
+var highchart_container=document.createElement('div');
 
 var div=$("#highchart").clone().attr("id","highchart2");
 $(div).insertAfter($("#highchart"));
 div.hide();
+
+var slider = document.createElement('div');
+slider.id = "dateRulersExample";
+$("#reports-menu").append(slider);
+var maxUTC = 1441756800000;
+var minUTC = 1421625600000;
+		var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
+          $("#dateRulersExample").dateRangeSlider({
+            bounds: {min: new Date(minUTC), max: new Date(maxUTC)},
+            defaultValues: {min: new Date(minUTC), max: new Date(maxUTC)},
+            scales: [{
+              first: function(value){ return value; },
+              end: function(value) {return value; },
+              next: function(value){
+                var next = new Date(value);
+                return new Date(next.setMonth(value.getMonth() + 1));
+              },
+              label: function(value){
+                return months[value.getMonth()];
+              },
+              format: function(tickContainer, tickStart, tickEnd){
+                tickContainer.addClass("myCustomClass");
+              }
+            }]
+          });
 var script=document.createElement('script');
 script.appendChild(document.createTextNode('('+main+')();'));
 (document.body||document.head||document.documentElement).appendChild(script);

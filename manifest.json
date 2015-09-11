@@ -2,12 +2,28 @@
 	"manifest_version": 2,
 	"name": "MyFitnessPal Chart Overhaul",
 	"version": "0.3",
-  	"content_scripts": [
-	{
+	"content_scripts": [{
 		"matches": [
-		  "http://www.myfitnesspal.com/*reports"
+			"http://www.myfitnesspal.com/*reports"
 		],
-	  "js": ["jquery-2.1.4.min.js", "highcharts.js", "exporting.js","main.js"]
-	}
+	"css" : [
+			"jquery-ui-1.11.4/jquery-ui.css",
+			"jquery-ui-1.11.4/jquery-ui.structure.css",
+			"jquery-ui-1.11.4/jquery-ui.theme.css",
+			"JQRangeSlider-5.7.1/css/iThing.css"
+		],
+	"js": [
+		"jquery-2.1.4.min.js",
+		"jquery-ui-1.11.4/jquery-ui.min.js",
+		"JQRangeSlider-5.7.1/jQDateRangeSlider-withRuler-min.js",
+		"highcharts.js",
+		"exporting.js",
+		"test.js"
+	]
+	}],
+	"web_accessible_resources" : [
+		"JQRangeSlider-5.7.1/css/icons-classic/label.png",
+		"JQRangeSlider-5.7.1/css/icons-classic/resultset_next.png",
+		"JQRangeSlider-5.7.1/css/icons-classic/resultset_previous.png"
 	]
 }
