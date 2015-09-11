@@ -7,7 +7,7 @@ var reportInfo={
 	category:null,
 	id:1,
 	name:null,
-	period:0,
+	date_range:{"start" : 0, "end" : 0},
 };
 var measurements = {
 	'weight' : null,
@@ -23,7 +23,7 @@ $(document).ready(function (){
 		category : "progress",
 		name : "weight",
 		id : 1,
-		period : 7,
+		date_range:getDateRangeFromPeriod(7),
 	};
 	makeMeasurementRequest(new_reportInfo, 7, 0);
 });
@@ -32,8 +32,10 @@ $(".period").click(function(e) {
 	var button = $(e.target);
 	var period = button.attr("data-period");
 	console.log("period clicked " + period);
-	if(period != reportInfo.period) {
-		updatePeriod(period);
+	var new_range = getDateRangeFromPeriod(period);
+	if(reportInfo.date_range.start != new_range.start ||
+		reportInfo.date_range.end != new_range.end) {
+		updateDateRange(new_range);
 		updateChart(reportInfo.category == "progress");
 	}
 });
@@ -45,7 +47,7 @@ $(".active-result").click(function(e) {
 	console.log("active-result clicked " + name + " " + category);
 	if(name != reportInfo.name) {
 		updateName(name, category);
-		updatePeriod(reportInfo.period);
+		updateDateRange(reportInfo.date_range);
 	}
 	updateChart(category == "progress");
 });
@@ -103,7 +105,7 @@ function updateData(name) {
 		chart_options.series[0].data=measurement.daily_data;
 		chart_options.series[1].data=measurement.moving_data;
 	} else {
-		makeMeasurementRequest(reportInfo, reportInfo.period, 0);
+		makeMeasurementRequest(reportInfo, 7, 0);
 	}
 }
 
@@ -118,25 +120,26 @@ function getId(name) {
 		return 1;
 }
 
-function updatePeriod(new_period) {
-	reportInfo.period = new_period;
+function updateDateRange(new_range) {
 	var measurement = getMeasurementByName(reportInfo.name);
+	if(measurement != null && measurement.length != 0) {
+		new_range.start = Math.max(new_range.start, measurement.data[0].dateUTC);
+	}
+	reportInfo.date_range = new_range;
 	var limits=getLimits(measurement);
 	chart_options.xAxis[0].min=limits.x_min;
 	chart_options.xAxis[0].max=limits.x_max;
-	chart_options.yAxis[0].min=limits.y_min;
-	chart_options.yAxis[0].max=limits.y_max;
 	chart_options.xAxis[0].tickInterval=getTickInterval(limits.x_min,limits.x_max);
 }
 
-function makeMeasurementRequest(new_reportInfo, period_length, index) {
-	var search_length = period_length + 7;
+function makeMeasurementRequest(new_reportInfo, lookback, index) {
+	var search_length = lookback + 7;
 	$.get("http://www.myfitnesspal.com/reports/results/"+new_reportInfo.category+"/"+new_reportInfo.id+"/"+search_length+".json?",function (raw_results){
 		if(index == 0 || raw_results.data.length == 0) {
 			console.log("showing");
 			parseData(raw_results);
 			updateName(new_reportInfo.name, new_reportInfo.category);
-            updatePeriod(new_reportInfo.period);
+            updateDateRange(new_reportInfo.date_range);
 			updateChart(new_reportInfo.category == "progress");
 		}
 		if(raw_results.data.length == 0)
@@ -144,10 +147,10 @@ function makeMeasurementRequest(new_reportInfo, period_length, index) {
 		else if(raw_results.data[0].total == 0) {
 			parseData(raw_results);
 			updateData(new_reportInfo.name);
-			console.log("lookback period is " + period_length);
+			console.log("lookback length is " + lookback);
 		} else {
 			index += 1;
-			makeMeasurementRequest(new_reportInfo, 2*period_length, index);
+			makeMeasurementRequest(new_reportInfo, 2*lookback, index);
 		}
 	});
 }
@@ -196,11 +199,10 @@ function getToday() {
 	return Date.UTC(curTime.getFullYear(),curTime.getMonth(),curTime.getDate());
 }
 
-function getDateRange() {
-	var curTime=new Date();
-	var today = Date.UTC(curTime.getFullYear(),curTime.getMonth(),curTime.getDate());
-	var lookback_day = today - reportInfo.period*oneDay;
-	return [lookback_day, today];
+function getDateRangeFromPeriod(period) {
+	var end = getToday();
+	var start = end - (period-1)*oneDay;
+	return {"start" : start, "end" : end};
 }
 
 function parseDateString(date_string,year){
@@ -259,29 +261,13 @@ function getTickInterval(x_min,x_max){
 
 function getLimits(measurement){
 	if(measurement == null || measurement.daily_data.length==0)
-		return {'x_min':0,'x_max':7,'y_min':0,'y_max':1};
-	var date_range = getDateRange();
-	var limits={'x_min':date_range[0],'x_max':date_range[1],'y_min':Number.MAX_VALUE,'y_max':Number.MIN_VALUE};
-	for(i=measurement.data.length-1;i>=0;i--){
-		var day_entry = measurement.daily_data[i];
-		var avg_entry = measurement.moving_data[i];
-		if(day_entry[0]<limits.x_min)
-			break;
-		else if(i==0)
-			limits.x_min=day_entry[0];
-
-		limits.y_min = Math.min(day_entry[1], avg_entry[1], limits.y_min);
-		limits.y_max = Math.max(day_entry[1], avg_entry[1], limits.y_max);
+		return {'x_min':0,'x_max':7};
+	else {
+		return {
+			'x_min' : Math.max(reportInfo.date_range.start, measurement.data[0].dateUTC),
+			'x_max' : date_range.end
+		};
 	}
-	console.log(limits.x_min +" " + limits.x_max + " " + limits.y_min + " "+ limits.y_max);
-	return limits;
-}
-
-function getDateRange() {
-	var curTime=new Date();
-	var today = Date.UTC(curTime.getFullYear(),curTime.getMonth(),curTime.getDate());
-	var lookback_day = today - reportInfo.period*oneDay;
-	return [lookback_day, today];
 }
 
 function getMeasurementByName(name) {
@@ -345,6 +331,7 @@ function createChartBasics(){
 				text : "PLACEHOLDER",
 				style : {fontSize : "16px", color : "#4d759e", fontWeight: "bold"}
 			},
+			startOnTick:true,
 			minRange : 1,
 			minTickInterval : 1,
 			allowDecimals : false
@@ -354,7 +341,7 @@ function createChartBasics(){
 			lineColor:"#C0C0C0",
 			tickColor:"#C0C0C0",
 			tickmarkPlacement:"on",
-			startOnTick:true,
+			//startOnTick:true,
 			dateTimeLabelFormats:{day:'%b %d',week:'%b %d',month:'%b %d',year:'%b %d'},
 			labels: {
 				align : "right",
@@ -385,7 +372,7 @@ var div=$("#highchart").clone().attr("id","highchart2");
 $(div).insertAfter($("#highchart"));
 //div.hide();
 
-/*
+
 var slider = document.createElement('div');
 slider.id = "dateRulersExample";
 $("#reports-menu").append(slider);
@@ -409,4 +396,4 @@ var minUTC = 1421625600000;
                 tickContainer.addClass("myCustomClass");
               }
             }]
-          });*/
+          });
