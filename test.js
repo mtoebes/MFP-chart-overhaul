@@ -8,6 +8,7 @@ var reportInfo={
 	id:1,
 	name:null,
 	date_range:{"start" : 0, "end" : 0},
+	limit_range:{"start" : 0, "end" : 0},
 };
 var measurements = {
 	'weight' : null,
@@ -24,6 +25,7 @@ $(document).ready(function (){
 		name : "weight",
 		id : 1,
 		date_range:getDateRangeFromPeriod(7),
+		limit_range:getDateRangeFromPeriod(365),
 	};
 	makeMeasurementRequest(new_reportInfo, 7, 0);
 });
@@ -32,12 +34,10 @@ $(".period").click(function(e) {
 	var button = $(e.target);
 	var period = button.attr("data-period");
 	console.log("period clicked " + period);
-	var new_range = getDateRangeFromPeriod(period);
-	if(reportInfo.date_range.start != new_range.start ||
-		reportInfo.date_range.end != new_range.end) {
-		updateDateRange(new_range);
-		updateChart(reportInfo.category == "progress");
-	}
+	var new_date_range = getDateRangeFromPeriod(period);
+	updateDateRange(new_date_range);
+	updateChart(reportInfo.category == "progress");
+
 });
 
 $(".active-result").click(function(e) {
@@ -48,8 +48,8 @@ $(".active-result").click(function(e) {
 	if(name != reportInfo.name) {
 		updateName(name, category);
 		updateDateRange(reportInfo.date_range);
+		updateChart(reportInfo.category == "progress");
 	}
-	updateChart(category == "progress");
 });
 
 function getCategory(report_id) {
@@ -66,23 +66,22 @@ function getCategory(report_id) {
 
 function updateChart(showChart) {
 	if(showChart) {
-		$('#highchart2').highcharts(chart_options);
-		$('#highchart2').show();
-		$('#highchart').hide();
+		var measurement = getMeasurementByName(reportInfo.name);
+		if(measurement != null) {
+			showSlider(true, reportInfo);
+			chart_options.series[0].data=measurement.daily_data;
+			chart_options.series[1].data=measurement.moving_data;
+			$('#highchart2').highcharts(chart_options);
+			$('#highchart2').show();
+			$('#highchart').hide();
+		} else {
+			showSlider(false);
+			var new_reportInfo = $.extend(true, {}, reportInfo);
+			var lookback = DateDif(new_reportInfo.date_range.start, new_reportInfo.date_range.end);
+			makeMeasurementRequest(new_reportInfo, lookback, 0);
+		}
 	} else {
-		$('#highchart').show();
-		$('#highchart2').hide();
-	}
-}
-
-function showChart(show) {
-	console.log("entered");
-	if(show) {
-		console.log("show chart");
-		$('#highchart2').show();
-		$('#highchart').hide();
-	} else {
-		console.log("hide chart");
+		showSlider(false);
 		$('#highchart').show();
 		$('#highchart2').hide();
 	}
@@ -94,19 +93,8 @@ function updateName(new_name, new_category) {
 	if(new_category != "progress")
 		return;
 	reportInfo.id = getId(name);
-	updateData(new_name);
 	chart_options.title.text=new_name.capitalize();
 	chart_options.yAxis[0].title.text=new_name.capitalize();
-}
-
-function updateData(name) {
-	var measurement = getMeasurementByName(name);
-	if(measurement != null) {
-		chart_options.series[0].data=measurement.daily_data;
-		chart_options.series[1].data=measurement.moving_data;
-	} else {
-		makeMeasurementRequest(reportInfo, 7, 0);
-	}
 }
 
 function getId(name) {
@@ -120,16 +108,19 @@ function getId(name) {
 		return 1;
 }
 
-function updateDateRange(new_range) {
-	var measurement = getMeasurementByName(reportInfo.name);
-	if(measurement != null && measurement.length != 0) {
-		new_range.start = Math.max(new_range.start, measurement.data[0].dateUTC);
+function updateDateRange(new_date_range) {
+	reportInfo.date_range = new_date_range;
+
+	if($("#dateRulersExample").is(':visible')){
+		$("#dateRulersExample").dateRangeSlider("min", new Date(reportInfo.date_range.start));
+		$("#dateRulersExample").dateRangeSlider("max", new Date(reportInfo.date_range.end));
 	}
-	reportInfo.date_range = new_range;
-	var limits=getLimits(measurement);
-	chart_options.xAxis[0].min=limits.x_min;
-	chart_options.xAxis[0].max=limits.x_max;
-	chart_options.xAxis[0].tickInterval=getTickInterval(limits.x_min,limits.x_max);
+
+	var new_limit_range = getLimits();
+	reportInfo.limit_range = new_limit_range;
+	chart_options.xAxis[0].min=new_limit_range.start;
+	chart_options.xAxis[0].max=new_limit_range.end;
+	chart_options.xAxis[0].tickInterval=getTickInterval();
 }
 
 function makeMeasurementRequest(new_reportInfo, lookback, index) {
@@ -140,14 +131,13 @@ function makeMeasurementRequest(new_reportInfo, lookback, index) {
 			parseData(raw_results);
 			updateName(new_reportInfo.name, new_reportInfo.category);
             updateDateRange(new_reportInfo.date_range);
-			updateChart(new_reportInfo.category == "progress");
+            updateChart(reportInfo.category == "progress");
 		}
 		if(raw_results.data.length == 0)
 			return;
 		else if(raw_results.data[0].total == 0) {
 			parseData(raw_results);
-			updateData(new_reportInfo.name);
-			console.log("lookback length is " + lookback);
+			showSlider(true, new_reportInfo);
 		} else {
 			index += 1;
 			makeMeasurementRequest(new_reportInfo, 2*lookback, index);
@@ -163,6 +153,7 @@ function parseData(raw_results){
 		'daily_data' : [],
 		'moving_data' : [],
 		'lookback_limit' : -1,
+		'slider_options' : {}
 	};
 	cur_year=new Date().getFullYear();
 	for(i=raw_data.length-1;i>=0;i--){
@@ -185,12 +176,16 @@ function parseData(raw_results){
 
 	measurement.data.reverse();
 	var today = getToday();
-	if(measurement.data.length>0&&measurement.data[measurement.data.length-1].dateUTC<today)
-		measurement.data.push({'date_string':"today",'dateUTC':today,'total':measurement.data[measurement.data.length-1].total});
+	if(measurement.data.length == 0) {
+		var date_range = {'start' : today - oneDay*7, 'end' : today};
+	} else {
+		var date_range = {'start' : measurement.data[0].dateUTC, 'end' : today};
+		if(measurement.data[measurement.data.length-1].dateUTC < today)
+			measurement.data.push({'date_string':"today",'dateUTC':today,'total':measurement.data[measurement.data.length-1].total});
+	}
+	measurement.slider_options = createSliderOptions(date_range);
 	measurement.daily_data=daily_value(measurement.data);
 	measurement.moving_data=moving_average(measurement.data);
-	if(measurement.data.length > 0)
- 	    measurement.lookback_limit = measurement.data[0].dateUTC;
 	setMeasurementByName(name, measurement);
 }
 
@@ -246,9 +241,9 @@ function moving_average(data){
 	return result;
 }
 
-function getTickInterval(x_min,x_max){
-	var period=(x_max-x_min)/oneDay;
-	if(period<=7){
+function getTickInterval(){
+	var period=DateDif(reportInfo.limit_range.start, reportInfo.limit_range.end)
+	if(period<=14){
 		return oneDay;;
 	}else if(period<=30){
 		return 2*oneDay;
@@ -259,13 +254,22 @@ function getTickInterval(x_min,x_max){
 	}
 }
 
-function getLimits(measurement){
-	if(measurement == null || measurement.daily_data.length==0)
-		return {'x_min':0,'x_max':7};
-	else {
+function getLimits(){
+	var measurement = getMeasurementByName(reportInfo.name);
+	if(measurement == null) {
 		return {
-			'x_min' : Math.max(reportInfo.date_range.start, measurement.data[0].dateUTC),
-			'x_max' : date_range.end
+			'start':reportInfo.date_range.start,
+			'end' : reportInfo.date_range.end
+		};
+	} else if(measurement.daily_data.length==0) {
+		return {
+			'start':getGlobal(measurement.slider_options.bounds.min),
+			'end' : getGlobal(measurement.slider_options.bounds.max)
+		};
+	} else {
+		return {
+			'start' : Math.max(reportInfo.date_range.start, measurement.data[0].dateUTC),
+			'end' : Math.min(reportInfo.date_range.end, measurement.data[measurement.data.length-1].dateUTC)
 		};
 	}
 }
@@ -299,7 +303,8 @@ function createChartBasics(){
 				enabled : true,
 				symbol : "circle",
 				radius : 2
-			}
+			},
+			animation : false
 		}, {
 			data : [],
 			name : "Average",
@@ -309,7 +314,8 @@ function createChartBasics(){
 				enabled : false,
 				symbol : "circle",
 				radius : 2
-			}
+			},
+			animation : false
 		}],
 		plotOptions : {
 			line : {lineWidth : 0, states : {hover : { lineWidth : 0, lineWidthPlus : 0 }}}
@@ -319,7 +325,7 @@ function createChartBasics(){
 			style : {
 				fontFamily: "\"Lucida Grande\", \"Lucida Sans Unicode\", Verdana, Arial, Helvetica, sans-serif",
 				fontSize: "12px"
-			}
+			},
         },
 		tooltip : {
 			shared:true,
@@ -364,36 +370,159 @@ function createChartBasics(){
 	};
 }
 
+function createSliderOptions(date_range) {
+	var options = {bounds : {}, scales : [], defaultValues: null, step : {days : 1}};
+	var range = DateDif(date_range.start, date_range.end) + 1;
+	if(range <= 31) {
+		options.bounds = {
+			"min" : getLocal(date_range.start),
+			"max" : getLocal(date_range.end)};
+    	options.scales = [getDayScale()];
+	} else if(range <= 731) {
+		options.bounds = {
+			"min" : getLocal(getMonthMinMax(date_range.start).min),
+			"max" : getLocal(getMonthMinMax(date_range.end).max)};
+		options.scales = [getMonthScale(true), getWeekScale()];
+	} else {
+		options.bounds = {
+			"min" : getLocal(getYearMinMax(date_range.start).min),
+			"max" : getLocal(getYearMinMax(date_range.end).max)};
+		options.scales = [getYearScale(true), getMonthScale(false)];
+		//options.step = { weeks : 1 };
+	}
+	return options;
+}
+
+function getYearMinMax(value) {
+	var start = new Date(value);
+	var start = new Date(start.getFullYear(), 0, 1);
+	var end = new Date(start.getFullYear()+1,0,0);
+	return {'min' : start.getTime(), 'max' : end.getTime()};
+}
+
+function getMonthMinMax(value) {
+	var start = new Date(value);
+	var start = new Date(start.getFullYear(), start.getMonth(), 1);
+	var end = new Date(start.getFullYear(), start.getMonth()+1, 0);
+	return {'min' : start.getTime(), 'max' : end.getTime()};
+}
+
+function getWeekMinMax(value) {
+	var start = new Date(value);
+	start.setUTCDate(Math.floor((value.getDate()-1)/7)*7+1);
+	var end = new Date(start);
+	end.setUTCDate(start.getDate() + 8);
+	if(end.getMonth() != start.getMonth())
+		end = new Date(start.getFullYear(), start.getMonth()+1, 1);
+	return {'min' : start.getTime(), 'max' : end.getTime()};
+}
+
+function getDayScale() {
+	return {
+		next: function(value){
+			var cur = new Date(value)
+			var next = new Date(value.getFullYear(), value.getMonth(), value.getDate()+1);
+			return next;
+
+		},
+		label: function(value){
+			return null;
+		},
+	}
+}
+
+function getWeekScale() {
+	return {
+		next: function(value){
+			var cur = new Date(value)
+			var next = new Date(value.getFullYear(), value.getMonth(), value.getDate()+7);
+			if(next.getMonth() != cur.getMonth())
+				next = new Date(next.getFullYear(), next.getMonth(), 1);
+			return next;
+
+		},
+		label: function(value){
+			return null;
+		},
+	}
+}
+
+function getYearScale(isLabel) {
+	return {
+		next: function(value){
+			var cur = new Date(value);
+			return new Date(cur.getFullYear()+1, 0, 1);
+		},
+		label: function(value){
+			if(isLabel)
+				return value.getFullYear();
+			else
+				return null;
+		},
+	}
+}
+
+function getMonthScale(isLabel) {
+	var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
+	return  {
+		next: function(value){
+			var cur = new Date(value);
+			return new Date(cur.getFullYear(), cur.getMonth()+1, 1);
+		},
+		label: function(value){
+			if(isLabel)
+				return months[value.getMonth()];
+			else
+				return null;
+		},
+	}
+}
 String.prototype.capitalize = function() {
     return this.charAt(0).toUpperCase() + this.slice(1);
+}
+
+function showSlider(show, new_reportInfo) {
+	if(show) {
+		if(new_reportInfo.name != reportInfo.name)
+    		return;
+		var measurement = getMeasurementByName(new_reportInfo.name);
+		if(measurement != null) {
+			measurement.slider_options.defaultValues = {'min': new_reportInfo.limit_range.start, 'max': new_reportInfo.limit_range.end};
+			$("#dateRulersExample").dateRangeSlider(measurement.slider_options);
+			$("#dateRulersExample").show()
+		} else {
+			$("#dateRulersExample").hide();
+		}
+	} else {
+		$("#dateRulersExample").hide();
+	}
+}
+
+function getLocal(time) {
+	var today = new Date();
+	var offset = today.getTimezoneOffset()*60000;
+	return time+offset;
+}
+
+function getGlobal(time) {
+	var today = new Date();
+	var offset = today.getTimezoneOffset()*60000;
+	return time-offset;
 }
 
 var div=$("#highchart").clone().attr("id","highchart2");
 $(div).insertAfter($("#highchart"));
 //div.hide();
 
-
 var slider = document.createElement('div');
 slider.id = "dateRulersExample";
 $("#reports-menu").append(slider);
-var maxUTC = 1441756800000;
-var minUTC = 1421625600000;
-		var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sept", "Oct", "Nov", "Dec"];
-          $("#dateRulersExample").dateRangeSlider({
-            bounds: {min: new Date(minUTC), max: new Date(maxUTC)},
-            defaultValues: {min: new Date(minUTC), max: new Date(maxUTC)},
-            scales: [{
-              first: function(value){ return value; },
-              end: function(value) {return value; },
-              next: function(value){
-                var next = new Date(value);
-                return new Date(next.setMonth(value.getMonth() + 1));
-              },
-              label: function(value){
-                return months[value.getMonth()];
-              },
-              format: function(tickContainer, tickStart, tickEnd){
-                tickContainer.addClass("myCustomClass");
-              }
-            }]
-          });
+
+$("#dateRulersExample").hide();
+$("#dateRulersExample").bind("userValuesChanged", function(e, data){
+	$(".period.active").attr('class','period');
+	console.log("Values just changed. min: " + data.values.min + " max: " + data.values.max);
+	var new_date_range = {"start" : getGlobal(data.values.min.getTime()), "end" :getGlobal(data.values.max.getTime())};
+	updateDateRange(new_date_range);
+	updateChart(reportInfo.category == "progress");
+});
