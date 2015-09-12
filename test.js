@@ -160,13 +160,16 @@ function parseData(raw_results){
 		var entry=raw_data[i];
 		if(i>0){
 			var prev_entry=raw_data[i-1];
-			if(prev_entry.date>entry.date)
+			var cur_month = parseInt(entry.date.split("/")[0]);
+			var prev_month = parseInt(prev_entry.date.split("/")[0]);
+
+			if(cur_month < prev_month)
 				cur_year--;
 			if(entry.total!=prev_entry.total&&entry.total!=0){
 				var cur_date=parseDateString(entry.date,cur_year);
 				measurement.data.push({'date_string':entry.date,'dateUTC':cur_date,'total':entry.total});
 			}
-		}else{
+		} else {
 			if(entry.total!=0){
 				var cur_date=parseDateString(entry.date,cur_year);
 				measurement.data.push({'date_string':entry.date,'dateUTC':cur_date,'total':entry.total});
@@ -378,7 +381,7 @@ function createSliderOptions(date_range) {
 			"min" : getLocal(date_range.start),
 			"max" : getLocal(date_range.end)};
     	options.scales = [getDayScale()];
-	} else if(range <= 731) {
+	} else if(range <= 480) {
 		options.bounds = {
 			"min" : getLocal(getMonthMinMax(date_range.start).min),
 			"max" : getLocal(getMonthMinMax(date_range.end).max)};
@@ -388,7 +391,6 @@ function createSliderOptions(date_range) {
 			"min" : getLocal(getYearMinMax(date_range.start).min),
 			"max" : getLocal(getYearMinMax(date_range.end).max)};
 		options.scales = [getYearScale(true), getMonthScale(false)];
-		//options.step = { weeks : 1 };
 	}
 	return options;
 }
@@ -512,7 +514,6 @@ function getGlobal(time) {
 
 var div=$("#highchart").clone().attr("id","highchart2");
 $(div).insertAfter($("#highchart"));
-//div.hide();
 
 var slider = document.createElement('div');
 slider.id = "dateRulersExample";
