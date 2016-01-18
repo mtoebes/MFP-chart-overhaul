@@ -152,22 +152,26 @@ function parseData(raw_results){
 	cur_year=new Date().getFullYear();
 	for(i=raw_data.length-1;i>=0;i--){
 		var entry=raw_data[i];
-		if(i>0){
-			var prev_entry=raw_data[i-1];
+		var addEntry = false;
+		
+		if(i == 0) {
+			addEntry = (entry.total != 0);
+		} else if (i == (raw_data.length - 1)) {
+			addEntry = true;
+		} else {
+			prev_entry = raw_data[i+1];
+			next_entry = raw_data[i-1];
 			var cur_month = parseInt(entry.date.split("/")[0]);
 			var prev_month = parseInt(prev_entry.date.split("/")[0]);
-
-			if(cur_month < prev_month)
+			if(cur_month > prev_month) {
 				cur_year--;
-			if(entry.total!=prev_entry.total&&entry.total!=0){
-				var cur_date=parseDateString(entry.date,cur_year);
-				measurement.data.push({'date_string':entry.date,'dateUTC':cur_date,'total':entry.total});
 			}
-		} else {
-			if(entry.total!=0){
-				var cur_date=parseDateString(entry.date,cur_year);
-				measurement.data.push({'date_string':entry.date,'dateUTC':cur_date,'total':entry.total});
-			}
+			addEntry = (next_entry.total != entry.total) && (entry.total !=0);
+		}
+		
+		if(addEntry) {
+			var cur_date=parseDateString(entry.date,cur_year);
+			measurement.data.push({'date_string':entry.date,'dateUTC':cur_date,'total':entry.total});
 		}
 	}
 
