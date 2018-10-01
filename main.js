@@ -120,7 +120,7 @@ function updateDateRange(new_looback_range) {
 
 function makeMeasurementRequest(new_reportInfo, lookback, index) {
 	var search_length = lookback + 7;
-	$.get("http://www.myfitnesspal.com/reports/results/"+new_reportInfo.category+"/"+new_reportInfo.id+"/"+(search_length.toFixed(0))+".json?",function (raw_results){
+	$.get("https://www.myfitnesspal.com/reports/results/"+new_reportInfo.category+"/"+new_reportInfo.id+"/"+(search_length.toFixed(0))+".json?",function (raw_results){
 		if(index == 0 || raw_results.data.length == 0) {
 			parseData(raw_results);
 			updateName(new_reportInfo.name, new_reportInfo.category);
